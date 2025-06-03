@@ -51,6 +51,45 @@ processing_files = {}
 # Initialize bot application
 application = Application.builder().token(TOKEN).build()
 
+# Add enhanced processing tracking
+class ProcessingTracker:
+    def __init__(self):
+        self.processing_files = {}
+        self.active_tasks = {}
+        self.stop_requested = {}
+    
+    def is_processing(self, file_id: str) -> bool:
+        return file_id in self.processing_files
+        
+    def start_processing(self, file_id: str, chat_id: int):
+        self.processing_files[file_id] = True
+        if chat_id not in self.active_tasks:
+            self.active_tasks[chat_id] = set()
+        self.active_tasks[chat_id].add(file_id)
+        self.stop_requested[chat_id] = False
+        
+    def stop_processing(self, chat_id: int):
+        self.stop_requested[chat_id] = True
+        
+    def should_stop(self, chat_id: int) -> bool:
+        return self.stop_requested.get(chat_id, False)
+        
+    def finish_processing(self, file_id: str, chat_id: int):
+        if file_id in self.processing_files:
+            del self.processing_files[file_id]
+        if chat_id in self.active_tasks:
+            self.active_tasks[chat_id].discard(file_id)
+            if not self.active_tasks[chat_id]:
+                del self.active_tasks[chat_id]
+                if chat_id in self.stop_requested:
+                    del self.stop_requested[chat_id]
+                    
+    def get_active_tasks(self, chat_id: int) -> int:
+        return len(self.active_tasks.get(chat_id, set()))
+
+# Initialize processing tracker
+processing_tracker = ProcessingTracker()
+
 def is_valid_email_domain(email: str) -> bool:
     """Check if the email domain is Gmail, Hotmail, or iCloud."""
     email = email.lower()
@@ -313,6 +352,7 @@ async def process_file_message(message, context):
     """Process a file message."""
     file = None
     file_size = 0
+    chat_id = message.chat_id
     
     try:
         # Check for different types of files
@@ -322,12 +362,15 @@ async def process_file_message(message, context):
             
             # Check if file is already being processed
             file_id = file.file_id
-            if file_id in processing_files:
-                await message.reply_text("⏳ This file is already being processed. Please wait...")
+            if processing_tracker.is_processing(file_id):
+                await message.reply_text(
+                    "⏳ This file is already being processed.\n"
+                    "Use /stop to cancel current processing."
+                )
                 return
                 
             # Mark file as being processed
-            processing_files[file_id] = True
+            processing_tracker.start_processing(file_id, chat_id)
             
         elif message.photo:
             file = message.photo[-1]
@@ -365,6 +408,11 @@ async def process_file_message(message, context):
 
             try:
                 async with asyncio.timeout(PROCESSING_TIMEOUT):
+                    # Check for stop request before starting download
+                    if processing_tracker.should_stop(chat_id):
+                        await processing_message.edit_text("⚠️ Processing cancelled by user.")
+                        return
+                        
                     file_info = await context.bot.get_file(file_id)
                     
                     async with aiohttp.ClientSession() as session:
@@ -385,6 +433,11 @@ async def process_file_message(message, context):
                                     return
                                 content = await response.read()
                         
+                        # Check for stop request after download
+                        if processing_tracker.should_stop(chat_id):
+                            await processing_message.edit_text("⚠️ Processing cancelled by user.")
+                            return
+                            
                         await processing_message.edit_text(
                             "📥 Download complete!\n"
                             f"⏱️ Time taken: {time.time() - start_time:.1f}s\n"
@@ -396,12 +449,24 @@ async def process_file_message(message, context):
                                 text_content = content.decode('utf-8', errors='ignore')
                                 content = None  # Free memory
                                 
+                                # Check for stop request before processing
+                                if processing_tracker.should_stop(chat_id):
+                                    await processing_message.edit_text("⚠️ Processing cancelled by user.")
+                                    return
+                                
                                 # Create unique output file
                                 output_file = os.path.join(STORAGE_DIR, f"credentials_{int(time.time())}.txt")
                                 
                                 # Extract credentials without intermediate progress messages
                                 credentials, saved_file = await extract_and_save_credentials(text_content, output_file)
                                 text_content = None  # Free memory
+                                
+                                # Final stop check before sending results
+                                if processing_tracker.should_stop(chat_id):
+                                    await processing_message.edit_text("⚠️ Processing cancelled by user.")
+                                    if os.path.exists(saved_file):
+                                        os.remove(saved_file)
+                                    return
                                 
                                 if credentials:
                                     try:
@@ -419,7 +484,10 @@ async def process_file_message(message, context):
                                         )
                                         
                                         # Delete the processing status message
-                                        await processing_message.delete()
+                                        try:
+                                            await processing_message.delete()
+                                        except Exception:
+                                            pass
                                         
                                     except Exception as e:
                                         logger.error(f"Error sending file: {e}")
@@ -459,43 +527,48 @@ async def process_file_message(message, context):
                 )
         finally:
             # Remove file from processing tracking
-            if file and file.file_id in processing_files:
-                del processing_files[file.file_id]
+            if file and file.file_id:
+                processing_tracker.finish_processing(file.file_id, chat_id)
                 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         await message.reply_text(f"❌ An unexpected error occurred: {str(e)}")
 
 async def stop_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stop the current processing operation."""
-    chat_info = await get_chat_info(update)
-    chat_id, chat_type, message = chat_info
-    if not chat_id:
-        return
+    """Force stop all processing for the chat."""
+    chat_id = update.effective_chat.id
+    
+    # Stop all processing for this chat
+    processing_tracker.stop_processing(chat_id)
+    
+    active_tasks = processing_tracker.get_active_tasks(chat_id)
+    if active_tasks > 0:
+        msg = await update.message.reply_text(
+            f"⚠️ Force stopping {active_tasks} active processing tasks...\n"
+            "Please wait while current operations complete safely."
+        )
         
-    # For channels, verify admin status
-    if chat_type == 'channel':
-        if not message.author_signature:
-            await message.reply_text("❌ Only channel admins can stop processing.")
-            return
+        # Wait for up to 5 seconds for tasks to clean up
+        for _ in range(10):
+            if processing_tracker.get_active_tasks(chat_id) == 0:
+                await msg.edit_text("✅ All processing tasks stopped successfully!")
+                return
+            await asyncio.sleep(0.5)
+            
+        await msg.edit_text(
+            "⚠️ Some tasks are taking longer to stop.\n"
+            "They will be terminated as soon as possible."
+        )
+    else:
+        await update.message.reply_text("ℹ️ No active processing tasks to stop.")
     
-    response = []
-    
-    # Check and stop conversion mode
-    if chat_id in conversion_mode and conversion_mode[chat_id]['active']:
+    # Reset any ongoing modes
+    if chat_id in conversion_mode:
         conversion_mode[chat_id]['active'] = False
-        response.append("✅ Conversion mode stopped.")
-    
-    # Check and stop bulk processing
+    if chat_id in bulk_processing:
+        bulk_processing[chat_id]['active'] = False
     if chat_id in processing_status:
         processing_status[chat_id]['stop_requested'] = True
-        if chat_id in bulk_processing and bulk_processing[chat_id]['active']:
-            response.append("✅ Bulk processing will stop after current file.")
-    
-    if response:
-        await message.reply_text("\n".join(response))
-    else:
-        await message.reply_text("❌ No active processing to stop.")
 
 async def start_bulk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start bulk processing mode."""
