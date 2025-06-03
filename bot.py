@@ -271,131 +271,150 @@ async def process_file_message(message, context):
     file = None
     file_size = 0
     
-    # Check for different types of files
-    if message.document:
-        file = message.document
-        file_size = message.document.file_size
-    elif message.photo:
-        file = message.photo[-1]
-        file_size = file.file_size
-    elif message.video:
-        file = message.video
-        file_size = message.video.file_size
-    elif message.audio:
-        file = message.audio
-        file_size = message.audio.file_size
-    
-    if not file:
-        await message.reply_text("❌ Please send a file or text message!")
-        return
-
-    # Get file details
-    file_id = file.file_id
-    file_name = getattr(file, 'file_name', f"file_{file.file_unique_id}")
-    
-    # Determine chunk size based on file size
-    chunk_size = SMALL_CHUNK_SIZE if file_size > LARGE_FILE_THRESHOLD else CHUNK_SIZE
-    
-    processing_message = await message.reply_text(
-        f"🔍 Initializing download...\n"
-        f"📦 File size: {format_size(file_size)}\n"
-        f"⚙️ Using {format_size(chunk_size)} chunks"
-    )
-    start_time = time.time()
-    last_update = 0
-
     try:
-        async with asyncio.timeout(PROCESSING_TIMEOUT):
-            file_info = await context.bot.get_file(file_id)
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(file_info.file_path) as response:
-                    if response.status != 200:
-                        raise Exception("Download failed")
-                    
-                    # Download with progress tracking
-                    chunks = []
-                    downloaded = 0
-                    content_length = int(response.headers.get('content-length', 0))
-                    
-                    async for chunk in response.content.iter_chunked(chunk_size):
-                        chunks.append(chunk)
-                        downloaded += len(chunk)
-                        
-                        # Update progress every 0.5 seconds
-                        now = time.time()
-                        if now - last_update >= 0.5:
-                            await update_progress(processing_message, downloaded, content_length, start_time)
-                            last_update = now
-                            
-                            # Free up memory if too many chunks accumulated
-                            if len(chunks) > 1000:  # After 1000 chunks
-                                content = b''.join(chunks)
-                                chunks = [content]
-                    
-                    content = b''.join(chunks)
-                    chunks = None  # Free memory
-                    
-                    # Final progress update
-                    await update_progress(processing_message, downloaded, content_length, start_time)
-                    
-                    if file_name.endswith(('.txt', '.csv', '.log', '.md')):
-                        text_content = content.decode('utf-8', errors='ignore')
-                        content = None  # Free memory
-                        try:
-                            # Create unique output file for this message
-                            output_file = os.path.join(STORAGE_DIR, f"credentials_{int(time.time())}.txt")
-                            
-                            # Process text and extract credentials
-                            credentials, saved_file = await extract_and_save_credentials(text_content, output_file, processing_message)
-                            text_content = None  # Free memory
-                            
-                            if credentials:
-                                try:
-                                    # Send only the file, not the credentials in chat
-                                    await message.reply_document(
-                                        document=open(saved_file, 'rb'),
-                                        filename=os.path.basename(saved_file),
-                                        caption=f"✅ Found {len(credentials)} credential pairs"
-                                    )
-                                    
-                                    # Update processing message
-                                    await processing_message.edit_text(
-                                        f"✅ Successfully processed:\n"
-                                        f"📧 Found {len(credentials)} credential pairs\n"
-                                        f"💾 File sent successfully"
-                                    )
-                                finally:
-                                    # Delete the file after sending
-                                    try:
-                                        os.remove(saved_file)
-                                    except Exception as e:
-                                        logger.error(f"Error deleting file {saved_file}: {e}")
-                            else:
-                                await processing_message.edit_text("❌ No valid credentials found")
-                                
-                        except asyncio.TimeoutError:
-                            await processing_message.edit_text(
-                                "⏱️ Processing timed out for this file.\n"
-                                "Try sending a smaller file."
-                            )
-                    else:
-                        await processing_message.edit_text(
-                            "❌ Not a text file. Please send text files only."
-                        )
+        # Check for different types of files
+        if message.document:
+            file = message.document
+            file_size = message.document.file_size
+        elif message.photo:
+            file = message.photo[-1]
+            file_size = file.file_size
+        elif message.video:
+            file = message.video
+            file_size = message.video.file_size
+        elif message.audio:
+            file = message.audio
+            file_size = message.audio.file_size
+        
+        if not file:
+            await message.reply_text("❌ Please send a file or text message!")
+            return
 
-    except asyncio.TimeoutError:
-        await processing_message.edit_text(
-            "⏱️ Processing timed out.\n"
-            "Please try with a smaller file."
+        # Get file details
+        file_id = file.file_id
+        file_name = getattr(file, 'file_name', f"file_{file.file_unique_id}")
+        
+        # Check file size
+        if file_size > MAX_FILE_SIZE:
+            await message.reply_text(f"❌ File too large! Maximum size is {format_size(MAX_FILE_SIZE)}")
+            return
+            
+        # Determine chunk size based on file size
+        chunk_size = SMALL_CHUNK_SIZE if file_size > LARGE_FILE_THRESHOLD else CHUNK_SIZE
+        
+        processing_message = await message.reply_text(
+            f"🔍 Initializing download...\n"
+            f"📦 File size: {format_size(file_size)}\n"
+            f"⚙️ Using {format_size(chunk_size)} chunks"
         )
+        start_time = time.time()
+        last_update = 0
+
+        try:
+            async with asyncio.timeout(PROCESSING_TIMEOUT):
+                file_info = await context.bot.get_file(file_id)
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(file_info.file_path) as response:
+                        if response.status != 200:
+                            await processing_message.edit_text(f"❌ Download failed with status {response.status}")
+                            return
+                        
+                        # Download with progress tracking
+                        chunks = []
+                        downloaded = 0
+                        content_length = int(response.headers.get('content-length', 0))
+                        
+                        async for chunk in response.content.iter_chunked(chunk_size):
+                            chunks.append(chunk)
+                            downloaded += len(chunk)
+                            
+                            # Update progress every 0.5 seconds
+                            now = time.time()
+                            if now - last_update >= 0.5:
+                                try:
+                                    await update_progress(processing_message, downloaded, content_length, start_time)
+                                    last_update = now
+                                except Exception as e:
+                                    logger.error(f"Error updating progress: {e}")
+                                
+                                # Free up memory if too many chunks accumulated
+                                if len(chunks) > 1000:  # After 1000 chunks
+                                    content = b''.join(chunks)
+                                    chunks = [content]
+                        
+                        await processing_message.edit_text("📥 Download complete! Processing file...")
+                        
+                        content = b''.join(chunks)
+                        chunks = None  # Free memory
+                        
+                        if file_name.endswith(('.txt', '.csv', '.log', '.md')):
+                            try:
+                                text_content = content.decode('utf-8', errors='ignore')
+                                content = None  # Free memory
+                                
+                                # Create unique output file
+                                output_file = os.path.join(STORAGE_DIR, f"credentials_{int(time.time())}.txt")
+                                
+                                await processing_message.edit_text("🔍 Extracting credentials...")
+                                
+                                # Process text and extract credentials
+                                credentials, saved_file = await extract_and_save_credentials(text_content, output_file, processing_message)
+                                text_content = None  # Free memory
+                                
+                                if credentials:
+                                    try:
+                                        await processing_message.edit_text("📤 Sending results file...")
+                                        
+                                        # Send only the file, not the credentials in chat
+                                        await message.reply_document(
+                                            document=open(saved_file, 'rb'),
+                                            filename=f"extracted_credentials_{len(credentials)}.txt",
+                                            caption=f"✅ Found {len(credentials)} credential pairs"
+                                        )
+                                        
+                                        # Update processing message
+                                        await processing_message.edit_text(
+                                            f"✅ Successfully processed:\n"
+                                            f"📧 Found {len(credentials)} credential pairs\n"
+                                            f"💾 File sent successfully"
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"Error sending file: {e}")
+                                        await processing_message.edit_text(f"❌ Error sending file: {str(e)}")
+                                    finally:
+                                        # Delete the file after sending
+                                        try:
+                                            if os.path.exists(saved_file):
+                                                os.remove(saved_file)
+                                        except Exception as e:
+                                            logger.error(f"Error deleting file {saved_file}: {e}")
+                                else:
+                                    await processing_message.edit_text("❌ No valid credentials found")
+                                    
+                            except Exception as e:
+                                logger.error(f"Error processing text content: {e}")
+                                await processing_message.edit_text(f"❌ Error processing text content: {str(e)}")
+                        else:
+                            await processing_message.edit_text(
+                                "❌ Not a text file. Please send text files only."
+                            )
+
+        except asyncio.TimeoutError:
+            await processing_message.edit_text(
+                "⏱️ Processing timed out.\n"
+                "Please try with a smaller file."
+            )
+        except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
+            await processing_message.edit_text(
+                f"❌ Error processing file:\n"
+                f"Error: {str(e)}\n"
+                "Please try again."
+            )
     except Exception as e:
-        logger.error(f"Error processing file: {str(e)}")
-        await processing_message.edit_text(
-            "❌ Error processing file.\n"
-            f"Error: {str(e)}\n"
-            "Please try again."
-        )
+        logger.error(f"Unexpected error: {str(e)}")
+        await message.reply_text(f"❌ An unexpected error occurred: {str(e)}")
 
 async def stop_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop the current processing operation."""
