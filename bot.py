@@ -22,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot Configuration
-TOKEN = os.environ.get("BOT_TOKEN", "8050041118:AAHWkWK9yFYl3e1spcF9_ShgnKVqHsZW3VM")
+TOKEN = os.environ.get("BOT_TOKEN", "7895976352:AAHK5RhzlYzktFOyZazhS0rc4xHI9mt8ijQ")
 PORT = int(os.environ.get("PORT", "8443"))
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
 
