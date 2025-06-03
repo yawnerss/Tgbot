@@ -45,6 +45,9 @@ processing_status = {}
 # Add conversion mode tracking
 conversion_mode = {}
 
+# Add file processing tracking
+processing_files = {}
+
 # Initialize bot application
 application = Application.builder().token(TOKEN).build()
 
@@ -316,6 +319,16 @@ async def process_file_message(message, context):
         if message.document:
             file = message.document
             file_size = message.document.file_size
+            
+            # Check if file is already being processed
+            file_id = file.file_id
+            if file_id in processing_files:
+                await message.reply_text("⏳ This file is already being processed. Please wait...")
+                return
+                
+            # Mark file as being processed
+            processing_files[file_id] = True
+            
         elif message.photo:
             file = message.photo[-1]
             file_size = file.file_size
@@ -326,130 +339,129 @@ async def process_file_message(message, context):
             file = message.audio
             file_size = message.audio.file_size
         
-        if not file:
-            await message.reply_text("❌ Please send a file or text message!")
-            return
-
-        # Get file details
-        file_id = file.file_id
-        file_name = getattr(file, 'file_name', f"file_{file.file_unique_id}")
-        
-        # Check file size
-        if file_size > MAX_FILE_SIZE:
-            await message.reply_text(
-                f"❌ File too large! Maximum size is {format_size(MAX_FILE_SIZE)}\n"
-                f"Current file size: {format_size(file_size)}"
-            )
-            return
-            
-        processing_message = await message.reply_text(
-            f"🔍 Initializing download...\n"
-            f"📦 File size: {format_size(file_size)}\n"
-            f"⚡ Using optimized parallel download"
-        )
-        start_time = time.time()
-
         try:
-            async with asyncio.timeout(PROCESSING_TIMEOUT):
-                file_info = await context.bot.get_file(file_id)
-                
-                async with aiohttp.ClientSession() as session:
-                    # Use parallel downloading for large files
-                    if file_size > LARGE_FILE_THRESHOLD:
-                        content = await download_file_in_chunks(
-                            session, 
-                            file_info.file_path, 
-                            file_size,
-                            processing_message,
-                            start_time
-                        )
-                    else:
-                        # Use simple download for smaller files
-                        async with session.get(file_info.file_path) as response:
-                            if response.status != 200:
-                                await processing_message.edit_text(f"❌ Download failed with status {response.status}")
-                                return
-                            content = await response.read()
-                    
-                    await processing_message.edit_text(
-                        "📥 Download complete!\n"
-                        f"⏱️ Time taken: {time.time() - start_time:.1f}s\n"
-                        "🔍 Processing file..."
-                    )
-                    
-                    if file_name.endswith(('.txt', '.csv', '.log', '.md')):
-                        try:
-                            text_content = content.decode('utf-8', errors='ignore')
-                            content = None  # Free memory
-                            
-                            # Create unique output file
-                            output_file = os.path.join(STORAGE_DIR, f"credentials_{int(time.time())}.txt")
-                            
-                            await processing_message.edit_text("🔍 Extracting credentials...")
-                            
-                            # Process text and extract credentials
-                            credentials, saved_file = await extract_and_save_credentials(text_content, output_file, processing_message)
-                            text_content = None  # Free memory
-                            
-                            if credentials:
-                                try:
-                                    await processing_message.edit_text("📤 Sending results file...")
-                                    
-                                    # Send only the file, not the credentials in chat
-                                    await message.reply_document(
-                                        document=open(saved_file, 'rb'),
-                                        filename=f"extracted_credentials_{len(credentials)}.txt",
-                                        caption=(
-                                            f"✅ Processing Complete!\n"
-                                            f"📊 Found {len(credentials)} credential pairs\n"
-                                            f"⏱️ Total time: {time.time() - start_time:.1f}s\n"
-                                            f"📦 Original size: {format_size(file_size)}"
-                                        )
-                                    )
-                                    
-                                    # Update processing message
-                                    await processing_message.edit_text(
-                                        f"✅ Successfully processed:\n"
-                                        f"📧 Found {len(credentials)} credential pairs\n"
-                                        f"⏱️ Processing time: {time.time() - start_time:.1f}s\n"
-                                        f"💾 File sent successfully"
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Error sending file: {e}")
-                                    await processing_message.edit_text(f"❌ Error sending file: {str(e)}")
-                                finally:
-                                    # Delete the file after sending
-                                    try:
-                                        if os.path.exists(saved_file):
-                                            os.remove(saved_file)
-                                    except Exception as e:
-                                        logger.error(f"Error deleting file {saved_file}: {e}")
-                            else:
-                                await processing_message.edit_text(
-                                    "❌ No valid credentials found\n"
-                                    f"⏱️ Time taken: {time.time() - start_time:.1f}s"
-                                )
-                                
-                        except Exception as e:
-                            logger.error(f"Error processing text content: {e}")
-                            await processing_message.edit_text(f"❌ Error processing text content: {str(e)}")
-                    else:
-                        await processing_message.edit_text(
-                            "❌ Not a text file. Please send text files only."
-                        )
+            if not file:
+                await message.reply_text("❌ Please send a file or text message!")
+                return
 
-        except asyncio.TimeoutError:
-            await processing_message.edit_text(
-                "⏱️ Processing timed out.\n"
-                "Please try with a smaller file."
+            # Get file details
+            file_id = file.file_id
+            file_name = getattr(file, 'file_name', f"file_{file.file_unique_id}")
+            
+            # Check file size
+            if file_size > MAX_FILE_SIZE:
+                await message.reply_text(
+                    f"❌ File too large! Maximum size is {format_size(MAX_FILE_SIZE)}\n"
+                    f"Current file size: {format_size(file_size)}"
+                )
+                return
+                
+            processing_message = await message.reply_text(
+                f"🔍 Initializing download...\n"
+                f"📦 File size: {format_size(file_size)}\n"
+                f"⚡ Using optimized parallel download"
             )
-        except Exception as e:
-            logger.error(f"Error processing file: {str(e)}")
-            await processing_message.edit_text(
-                f"❌ Error processing file:\n"
-                f"Error: {str(e)}\n"
-                "Please try again."
-            )
+            start_time = time.time()
+
+            try:
+                async with asyncio.timeout(PROCESSING_TIMEOUT):
+                    file_info = await context.bot.get_file(file_id)
+                    
+                    async with aiohttp.ClientSession() as session:
+                        # Use parallel downloading for large files
+                        if file_size > LARGE_FILE_THRESHOLD:
+                            content = await download_file_in_chunks(
+                                session, 
+                                file_info.file_path, 
+                                file_size,
+                                processing_message,
+                                start_time
+                            )
+                        else:
+                            # Use simple download for smaller files
+                            async with session.get(file_info.file_path) as response:
+                                if response.status != 200:
+                                    await processing_message.edit_text(f"❌ Download failed with status {response.status}")
+                                    return
+                                content = await response.read()
+                        
+                        await processing_message.edit_text(
+                            "📥 Download complete!\n"
+                            f"⏱️ Time taken: {time.time() - start_time:.1f}s\n"
+                            "🔍 Processing file..."
+                        )
+                        
+                        if file_name.endswith(('.txt', '.csv', '.log', '.md')):
+                            try:
+                                text_content = content.decode('utf-8', errors='ignore')
+                                content = None  # Free memory
+                                
+                                # Create unique output file
+                                output_file = os.path.join(STORAGE_DIR, f"credentials_{int(time.time())}.txt")
+                                
+                                # Extract credentials without intermediate progress messages
+                                credentials, saved_file = await extract_and_save_credentials(text_content, output_file)
+                                text_content = None  # Free memory
+                                
+                                if credentials:
+                                    try:
+                                        # Send results file with complete information
+                                        await message.reply_document(
+                                            document=open(saved_file, 'rb'),
+                                            filename=f"extracted_credentials_{len(credentials)}.txt",
+                                            caption=(
+                                                f"✅ Processing Complete!\n"
+                                                f"📊 Found {len(credentials)} unique credentials\n"
+                                                f"⏱️ Total time: {time.time() - start_time:.1f}s\n"
+                                                f"📦 Original size: {format_size(file_size)}\n"
+                                                f"📁 From: {file_name}"
+                                            )
+                                        )
+                                        
+                                        # Delete the processing status message
+                                        await processing_message.delete()
+                                        
+                                    except Exception as e:
+                                        logger.error(f"Error sending file: {e}")
+                                        await processing_message.edit_text(f"❌ Error sending file: {str(e)}")
+                                    finally:
+                                        # Delete the temporary file
+                                        try:
+                                            if os.path.exists(saved_file):
+                                                os.remove(saved_file)
+                                        except Exception as e:
+                                            logger.error(f"Error deleting file {saved_file}: {e}")
+                                else:
+                                    await processing_message.edit_text(
+                                        "❌ No valid credentials found\n"
+                                        f"⏱️ Time taken: {time.time() - start_time:.1f}s"
+                                    )
+                                    
+                            except Exception as e:
+                                logger.error(f"Error processing text content: {e}")
+                                await processing_message.edit_text(f"❌ Error processing text content: {str(e)}")
+                        else:
+                            await processing_message.edit_text(
+                                "❌ Not a text file. Please send text files only."
+                            )
+
+            except asyncio.TimeoutError:
+                await processing_message.edit_text(
+                    "⏱️ Processing timed out.\n"
+                    "Please try with a smaller file."
+                )
+            except Exception as e:
+                logger.error(f"Error processing file: {str(e)}")
+                await processing_message.edit_text(
+                    f"❌ Error processing file:\n"
+                    f"Error: {str(e)}\n"
+                    "Please try again."
+                )
+        finally:
+            # Remove file from processing tracking
+            if file and file.file_id in processing_files:
+                del processing_files[file.file_id]
+                
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         await message.reply_text(f"❌ An unexpected error occurred: {str(e)}")
