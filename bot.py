@@ -123,6 +123,8 @@ def is_valid_email_domain(email: str) -> bool:
     """Check if the email domain is Gmail, Hotmail, or iCloud."""
     email = email.lower()
     valid_domains = [
+        '@rambler.ru',
+        '@mail.ru',
         '@gmail.com',
         '@hotmail.com',
         '@hotmail.co.uk',
