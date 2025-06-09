@@ -123,6 +123,7 @@ def is_valid_email_domain(email: str) -> bool:
     """Check if the email domain is Gmail, Hotmail, or iCloud."""
     email = email.lower()
     valid_domains = [
+        '@yandex.ru',
         '@rambler.ru',
         '@mail.ru',
         '@gmail.com',
@@ -148,7 +149,7 @@ def normalize_email(email: str) -> str:
 
 async def extract_and_save_credentials(text: str, output_file: str, processing_message=None) -> Tuple[List[str], str]:
     """Extract credentials and save them to a file."""
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    email_pattern = r'[a-zA-Z0-9._%+]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     password_pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z0-9]{6,12}$'
     
     valid_credentials = []
