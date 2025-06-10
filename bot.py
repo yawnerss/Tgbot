@@ -571,7 +571,7 @@ async def main():
             await asyncio.sleep(3600)
             
     except Exception as e:
-        logger.error(f"Error in main: {e}")
+        logger.error(f"Error in main: {e}"
         raise
 
 if __name__ == '__main__':
