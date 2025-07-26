@@ -101,14 +101,27 @@ def handle_message(sender_id, message):
                 reply = "⛅ Please specify a city. Example: `weather Manila`"
         elif msg_lower in ["help", "start", "hi", "hello"]:
             reply = "👋 Hello! I'm your Philippine Weather Bot!\n\n⛅ Type `weather <city>` or `update <city>` to get weather information for Philippine cities.\n\nExample: `weather Manila`"
+        elif msg_lower in ["test", "debug"]:
+            reply = "🔧 Bot is running! However, I cannot send messages due to missing Facebook permissions. Please check the server logs for setup instructions."
         else:
             reply = "⛅ Type `weather <city>` or `update <city>` to get Philippine weather.\n\nExample: `weather Cebu`"
         
-        send_message(sender_id, reply)
+        # Try to send the message
+        success = send_message(sender_id, reply)
+        
+        # If sending fails, log the issue but don't crash
+        if not success:
+            print(f"⚠️  Could not send reply to {sender_id}. Check permissions.")
+            # In a production environment, you might want to queue this message
+            # or store it for later retry when permissions are fixed
         
     except Exception as e:
         print(f"Error handling message: {str(e)}")
-        send_message(sender_id, "⚠️ Sorry, something went wrong. Please try again.")
+        # Try to send error message, but don't fail if it doesn't work
+        try:
+            send_message(sender_id, "⚠️ Sorry, something went wrong. Please try again.")
+        except:
+            print("Could not send error message either - permission issue")
 
 def get_weather(place):
     """Fetch weather data for the specified location"""
@@ -212,22 +225,24 @@ def send_message(recipient_id, text):
         # Method 1: Standard /me/messages with appsecret_proof
         success = try_send_with_me_endpoint(recipient_id, text)
         if success:
-            return
+            return True
             
         # Method 2: Try with specific page ID if we can get it
         success = try_send_with_page_id(recipient_id, text)
         if success:
-            return
+            return True
             
         # Method 3: Try batch request as a last resort
         success = try_send_with_batch(recipient_id, text)
         if success:
-            return
+            return True
             
-        print("❌ All send methods failed")
+        print("❌ All send methods failed - Check app permissions")
+        return False
         
     except Exception as e:
         print(f"❌ Error in send_message: {str(e)}")
+        return False
 
 def try_send_with_me_endpoint(recipient_id, text):
     """Try sending with /me/messages endpoint"""
@@ -519,19 +534,77 @@ def comprehensive_diagnostics():
     debug_token()
     page_id = test_page_info()
     test_send_api()
+    test_permissions()
     
-    print("\n=== RECOMMENDATIONS ===")
+    print("\n=== DIAGNOSIS & SOLUTION ===")
     if not page_id:
         print("❌ CRITICAL: Cannot access page information")
         print("   - Your PAGE_ACCESS_TOKEN might be invalid or expired")
         print("   - Make sure it's a Page Access Token, not a User Access Token")
-        print("   - Check that the token has 'pages_messaging' permission")
         print("   - Regenerate the token in Facebook Developer Console")
     else:
-        print("✅ Page access seems to work")
-        print("   - The messaging issue might be permissions-related")
-        print("   - Make sure your webhook is properly configured")
-        print("   - Check that 'messages' events are subscribed in webhook settings")
+        print("✅ Page access works - Token can read page info")
+        print("❌ CRITICAL: Cannot send messages - Missing pages_messaging permission")
+        print("\n🔧 SOLUTION STEPS:")
+        print("1. Go to Facebook Developer Console: https://developers.facebook.com/")
+        print("2. Select your app")
+        print("3. Go to 'App Review' > 'Permissions and Features'")
+        print("4. Search for 'pages_messaging' and request it")
+        print("5. OR switch to 'Development Mode' for testing:")
+        print("   - Go to 'Settings' > 'Basic'")
+        print("   - Make sure app is in 'Development' mode")
+        print("   - Add test users as 'Developers' or 'Testers'")
+        print("\n⚠️  FOR IMMEDIATE TESTING:")
+        print("   - Make sure your app is in Development mode")
+        print("   - The person testing must be added as a Developer/Tester")
+        print("   - Or submit for App Review to get pages_messaging approved")
+
+def test_permissions():
+    """Test what permissions the current token has"""
+    try:
+        print("\n=== PERMISSION TESTING ===")
+        
+        # Test basic page access
+        url = "https://graph.facebook.com/v18.0/me"
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof,
+            "fields": "id,name,access_token,category,tasks"
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            print("✅ Page permissions that work:")
+            print(f"   - Read page basic info: ✅")
+            
+            # Check if we can get tasks (indicates permissions)
+            if 'tasks' in data:
+                tasks = data['tasks']
+                print(f"   - Page tasks: {tasks}")
+                if 'MESSAGING' in tasks:
+                    print("   - MESSAGING task: ✅")
+                else:
+                    print("   - MESSAGING task: ❌ (This is the problem!)")
+            
+        # Test messenger-specific endpoints
+        print("\n🔍 Testing messenger-specific permissions...")
+        
+        # Try to get messenger profile (this should work if messaging is enabled)
+        messenger_url = "https://graph.facebook.com/v18.0/me/messenger_profile"
+        response = requests.get(messenger_url, params={"access_token": PAGE_ACCESS_TOKEN}, timeout=10)
+        
+        print(f"Messenger profile access: {response.status_code}")
+        if response.status_code == 200:
+            print("✅ Can access messenger profile")
+        else:
+            print(f"❌ Cannot access messenger profile: {response.text}")
+            
+    except Exception as e:
+        print(f"Error testing permissions: {str(e)}")
 
 if __name__ == '__main__':
     print("Starting Facebook Weather Bot...")
