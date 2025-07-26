@@ -10,16 +10,23 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"  # Must match the one in your FB App
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPAcbFb9XggBAgBXJKbN42L30MVqCQO1zhw5oJwDjzJgTaPHPYrNrC9LK3sgHVLmv2z9ZCHmfFwHCV96FwguZCEWGSMZBKTGtaqCKvtvK8lUJ16OZCHthKZBUSkm6pgTJOMlOYVomyTyOu63WnsJK3BgOxsF4VCGzogqKjq7lOVPHujuv2SK15kgZDZD"
-APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Get this from Facebook App Settings -> Basic -> App Secret
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPA77hl3xKE78EkgplIHf8jxYSTeIrQZAtScP78GJQBws6uDDYq4QMpW3jIMaZBxPUVYFcI7kMY3mgrvJD0XiFYLoR7NA9vbcZAY8Jpf7Hs3IZB86zZCiIZAuujba8OUF9LG5JYWaapjMQApHi34A3RsZA1ALizCnehVCNsYMbgiMnrZCssONrKFqCmGBdznZBE2Stf0xhoelca7CcPHHlbN4MBZCMT8gZDZD"
+APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Your actual App Secret
 
 def generate_appsecret_proof(access_token, app_secret):
     """Generate the appsecret_proof required by Facebook"""
-    return hmac.new(
-        app_secret.encode('utf-8'),
-        access_token.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
+    try:
+        # Ensure both are strings and encode properly
+        token_bytes = access_token.encode('utf-8')
+        secret_bytes = app_secret.encode('utf-8')
+        
+        # Create HMAC-SHA256 hash
+        proof = hmac.new(secret_bytes, token_bytes, hashlib.sha256).hexdigest()
+        print(f"Generated appsecret_proof: {proof[:20]}...") # Show first 20 chars for debugging
+        return proof
+    except Exception as e:
+        print(f"Error generating appsecret_proof: {e}")
+        return None
 
 @app.route('/', methods=['GET'])
 def verify():
@@ -193,6 +200,11 @@ def get_weather(place):
 def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
+        # Use the page ID instead of 'me' - extract from your webhook data
+        PAGE_ID = "715906884939884"  # This is your page ID from the logs
+        
+        url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/messages"
+        
         payload = {
             "recipient": {"id": recipient_id},
             "message": {"text": text}
@@ -201,17 +213,29 @@ def send_message(recipient_id, text):
         # Generate appsecret_proof for enhanced security
         appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
         
+        if not appsecret_proof:
+            print("❌ Failed to generate appsecret_proof")
+            return
+        
         params = {
             "access_token": PAGE_ACCESS_TOKEN,
             "appsecret_proof": appsecret_proof
         }
         
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
         print(f"Sending message to {recipient_id}: {text}")
+        print(f"Using URL: {url}")
+        print(f"Access token length: {len(PAGE_ACCESS_TOKEN)}")
+        print(f"App secret length: {len(APP_SECRET)}")
         
         response = requests.post(
-            'https://graph.facebook.com/v18.0/me/messages',
+            url,
             params=params,
             json=payload,
+            headers=headers,
             timeout=10
         )
         
@@ -225,8 +249,49 @@ def send_message(recipient_id, text):
             print(f"❌ Failed to send message. Status: {response.status_code}")
             print(f"Response: {response.text}")
             
+            # Try fallback method
+            print("Trying fallback method...")
+            alternative_response = send_message_fallback(recipient_id, text)
+            if alternative_response:
+                print("✅ Fallback method succeeded")
+            
     except Exception as e:
         print(f"❌ Error sending message: {str(e)}")
+
+def send_message_fallback(recipient_id, text):
+    """Fallback method using 'me' endpoint with appsecret_proof"""
+    try:
+        url = "https://graph.facebook.com/v18.0/me/messages"
+        
+        payload = {
+            "recipient": {"id": recipient_id},
+            "message": {"text": text},
+            "messaging_type": "RESPONSE"
+        }
+        
+        # Generate appsecret_proof for enhanced security
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof
+        }
+        
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Fallback also failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Fallback error: {str(e)}")
+        return False
 
 if __name__ == '__main__':
     print("Starting Facebook Weather Bot...")
