@@ -10,7 +10,7 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"  # Must match the one in your FB App
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPHxEne4QNJlaIHsTohGrogbMW4EI3EPgQZB4bRyYa95LzzRKFDm66VSBBUAbPREjUZAI22XGGOZCWWPWNN7gnye0ncQFX3KjnGCUbbSxEr7dtV2M5999WLjyz1Bmz2Kz0c9TZCZAPb1rfIFPnhGC71VjxEL0zcQ3SScpIjzwRicHRq0Wrhb9dke4CXOyU3OJvzkALTZByua2gmezK6WNQKOlQi3bI0s4Na1QZDZD"
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPOJfLLQg2jZCPjfLhFSgZAyj8sFbMfGcdhBQdjzfX5qT7YlKEkecmXRrEURKWcfIiDXtmYZAE1YEE8h6TOROCP2VV5rCQTXCuOLKXTShZBtG9t5Fb3a6ktAeGoy60cTZA5OyO418udSZBrFgikuLB0XZA3v7CHmpeiUZAYsPqqzHtcqWMJ4mVyrBIAZDZD"
 APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Your actual App Secret
 
 def generate_appsecret_proof(access_token, app_secret):
