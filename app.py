@@ -207,14 +207,13 @@ def get_weather(place):
 def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
-        # Use the correct page ID from your debug results
-        PAGE_ID = "715906884939884"  # Your actual page ID
-        
-        url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/messages"
+        # Use the standard /me/messages endpoint - this is the correct approach
+        url = "https://graph.facebook.com/v18.0/me/messages"
         
         payload = {
             "recipient": {"id": recipient_id},
-            "message": {"text": text}
+            "message": {"text": text},
+            "messaging_type": "RESPONSE"  # Required for newer API versions
         }
         
         # Generate appsecret_proof for enhanced security
@@ -236,7 +235,6 @@ def send_message(recipient_id, text):
         print(f"Sending message to {recipient_id}: {text}")
         print(f"Using URL: {url}")
         print(f"Access token length: {len(PAGE_ACCESS_TOKEN)}")
-        print(f"App secret length: {len(APP_SECRET)}")
         
         response = requests.post(
             url,
@@ -247,6 +245,7 @@ def send_message(recipient_id, text):
         )
         
         print(f"Send message response status: {response.status_code}")
+        print(f"Response: {response.text}")
         
         if response.status_code == 200:
             print("✅ Message sent successfully")
@@ -254,52 +253,78 @@ def send_message(recipient_id, text):
             print(f"Message ID: {response_data.get('message_id', 'N/A')}")
         else:
             print(f"❌ Failed to send message. Status: {response.status_code}")
-            print(f"Response: {response.text}")
             
-            # Try fallback method
-            print("Trying fallback method...")
-            alternative_response = send_message_fallback(recipient_id, text)
-            if alternative_response:
-                print("✅ Fallback method succeeded")
+            # Try without appsecret_proof
+            print("Trying without appsecret_proof...")
+            params_simple = {"access_token": PAGE_ACCESS_TOKEN}
+            
+            response_fallback = requests.post(
+                url,
+                params=params_simple,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            
+            print(f"Fallback response status: {response_fallback.status_code}")
+            print(f"Fallback response: {response_fallback.text}")
+            
+            if response_fallback.status_code == 200:
+                print("✅ Fallback method (without appsecret_proof) succeeded")
+            else:
+                print("❌ Both methods failed")
             
     except Exception as e:
         print(f"❌ Error sending message: {str(e)}")
 
-def send_message_fallback(recipient_id, text):
-    """Fallback method using 'me' endpoint with appsecret_proof"""
+def debug_token():
+    """Debug the access token to check its validity and permissions"""
     try:
-        url = "https://graph.facebook.com/v18.0/me/messages"
-        
-        payload = {
-            "recipient": {"id": recipient_id},
-            "message": {"text": text},
-            "messaging_type": "RESPONSE"
-        }
-        
-        # Generate appsecret_proof for enhanced security
-        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
-        
+        debug_url = "https://graph.facebook.com/debug_token"
         params = {
-            "access_token": PAGE_ACCESS_TOKEN,
-            "appsecret_proof": appsecret_proof
+            "input_token": PAGE_ACCESS_TOKEN,
+            "access_token": PAGE_ACCESS_TOKEN
         }
         
-        headers = {
-            'Content-Type': 'application/json'
-        }
-        
-        response = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
+        response = requests.get(debug_url, params=params)
+        print(f"Token debug response: {response.text}")
         
         if response.status_code == 200:
-            return True
-        else:
-            print(f"Fallback also failed: {response.text}")
-            return False
-            
+            data = response.json()
+            if 'data' in data:
+                token_data = data['data']
+                print(f"Token is valid: {token_data.get('is_valid', False)}")
+                print(f"App ID: {token_data.get('app_id', 'N/A')}")
+                print(f"User ID: {token_data.get('user_id', 'N/A')}")
+                print(f"Scopes: {token_data.get('scopes', [])}")
+                print(f"Expires at: {token_data.get('expires_at', 'Never')}")
+        
     except Exception as e:
-        print(f"Fallback error: {str(e)}")
-        return False
+        print(f"Error debugging token: {str(e)}")
+
+def test_page_info():
+    """Test if we can get page information"""
+    try:
+        url = "https://graph.facebook.com/v18.0/me"
+        params = {"access_token": PAGE_ACCESS_TOKEN}
+        
+        response = requests.get(url, params=params)
+        print(f"Page info response: {response.text}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Page Name: {data.get('name', 'N/A')}")
+            print(f"Page ID: {data.get('id', 'N/A')}")
+            print(f"Category: {data.get('category', 'N/A')}")
+        
+    except Exception as e:
+        print(f"Error getting page info: {str(e)}")
 
 if __name__ == '__main__':
     print("Starting Facebook Weather Bot...")
+    print("\n=== Running diagnostics ===")
+    debug_token()
+    test_page_info()
+    print("=== End diagnostics ===\n")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
