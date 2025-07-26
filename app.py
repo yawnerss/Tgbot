@@ -208,7 +208,7 @@ def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
         # Use the correct page ID from your debug results
-        PAGE_ID = "122123589554894945"  # Your actual page ID
+        PAGE_ID = "715906884939884"  # Your actual page ID
         
         url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/messages"
         
