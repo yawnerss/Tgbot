@@ -10,7 +10,7 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"  # Must match the one in your FB App
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPOJfLLQg2jZCPjfLhFSgZAyj8sFbMfGcdhBQdjzfX5qT7YlKEkecmXRrEURKWcfIiDXtmYZAE1YEE8h6TOROCP2VV5rCQTXCuOLKXTShZBtG9t5Fb3a6ktAeGoy60cTZA5OyO418udSZBrFgikuLB0XZA3v7CHmpeiUZAYsPqqzHtcqWMJ4mVyrBIAZDZD"
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPaByGZAt7irvSaOUmqdVqb5w6EpOiLivl5tx9FLtZCn8V3ncJyYA7fo4OwNVMgKzBZABJbPuLoPn3yaxrVDsPXbMDMRZAZC4saxPzr6hD3vxOUQ6hTx3Km23ASMp3FMmdcrHOjia0HVmdAHw1uQBB9b2lZAhtZBuRg94CikZAKZBmxkwZCuXfzEIyuxIgG6JkXwOhfNdVZAXuiiG7qVQxnj8ZCze1T2gx2LXkXYGwZDZD"
 APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Your actual App Secret
 
 def generate_appsecret_proof(access_token, app_secret):
@@ -220,15 +220,16 @@ def get_weather(place):
 def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
-        # Try multiple approaches to send the message
+        print(f"📤 Sending message to {recipient_id}: {text[:50]}{'...' if len(text) > 50 else ''}")
         
-        # Method 1: Standard /me/messages with appsecret_proof
-        success = try_send_with_me_endpoint(recipient_id, text)
+        # Try multiple approaches to send the message
+        # Method 1: Try with the correct page ID first (most likely to work)
+        success = try_send_with_page_id(recipient_id, text)
         if success:
             return True
             
-        # Method 2: Try with specific page ID if we can get it
-        success = try_send_with_page_id(recipient_id, text)
+        # Method 2: Standard /me/messages with appsecret_proof
+        success = try_send_with_me_endpoint(recipient_id, text)
         if success:
             return True
             
@@ -237,7 +238,7 @@ def send_message(recipient_id, text):
         if success:
             return True
             
-        print("❌ All send methods failed - Check app permissions")
+        print("❌ All send methods failed - This shouldn't happen with your valid permissions!")
         return False
         
     except Exception as e:
@@ -323,14 +324,16 @@ def try_send_with_page_id(recipient_id, text):
 def try_send_with_batch(recipient_id, text):
     """Try sending using batch request"""
     try:
-        url = "https://graph.facebook.com/v18.0/"
+        url = "https://graph.facebook.com/v23.0/"  # Using v23.0 to match your token
         
-        # Create batch request
-        batch_request = [{
-            "method": "POST",
-            "relative_url": "me/messages",
-            "body": f"recipient={{\"id\":\"{recipient_id}\"}}&message={{\"text\":\"{text}\"}}&messaging_type=RESPONSE"
-        }]
+        # Create batch request - try both me/messages and direct page ID
+        batch_request = [
+            {
+                "method": "POST",
+                "relative_url": "715906884939884/messages",  # Your actual page ID
+                "body": f"recipient={{\"id\":\"{recipient_id}\"}}&message={{\"text\":\"{text}\"}}&messaging_type=RESPONSE"
+            }
+        ]
         
         appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
         
@@ -340,7 +343,7 @@ def try_send_with_batch(recipient_id, text):
             "batch": json.dumps(batch_request)
         }
         
-        print(f"Trying batch request...")
+        print(f"Trying batch request with page ID 715906884939884...")
         response = requests.post(url, params=params, timeout=10)
         
         print(f"Batch response status: {response.status_code}")
