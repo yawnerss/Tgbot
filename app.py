@@ -10,7 +10,7 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"  # Must match the one in your FB App
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPHxEne4QNJlaIHsTohGrogbMW4EI3EPgQZB4bRyYa95LzzRKFDm66VSBBUAbPREjUZAI22XGGOZCWWPWNN7gnye0ncQFX3KjnGCUbbSxEr7dtV2M5999WLjyz1Bmz2Kz0c9TZCZAPb1rfIFPnhGC71VjxEL0zcQ3SScpIjzwRicHRq0Wrhb9dke4CXOyU3OJvzkALTZByua2gmezK6WNQKOlQi3bI0s4Na1QZDZD"
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPaByGZAt7irvSaOUmqdVqb5w6EpOiLivl5tx9FLtZCn8V3ncJyYA7fo4OwNVMgKzBZABJbPuLoPn3yaxrVDsPXbMDMRZAZC4saxPzr6hD3vxOUQ6hTx3Km23ASMp3FMmdcrHOjia0HVmdAHw1uQBB9b2lZAhtZBuRg94CikZAKZBmxkwZCuXfzEIyuxIgG6JkXwOhfNdVZAXuiiG7qVQxnj8ZCze1T2gx2LXkXYGwZDZD"
 APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Your actual App Secret
 
 def generate_appsecret_proof(access_token, app_secret):
@@ -37,11 +37,18 @@ def verify():
     
     print(f"Verification attempt - Mode: {mode}, Token: {token}")
     
+    # Handle Facebook's webhook verification
     if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("Webhook verified successfully!")
+        print("✅ Webhook verified successfully!")
         return challenge, 200
+    
+    # Handle other GET requests (health checks, direct access, etc.)
+    elif mode is None and token is None:
+        print("ℹ️  Non-verification GET request (probably health check)")
+        return "Bot is running", 200
+    
     else:
-        print("Verification failed!")
+        print("❌ Verification failed!")
         return "Verification failed", 403
 
 @app.route('/', methods=['POST'])
