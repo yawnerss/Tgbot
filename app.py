@@ -207,124 +207,336 @@ def get_weather(place):
 def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
-        # Use the standard /me/messages endpoint - this is the correct approach
+        # Try multiple approaches to send the message
+        
+        # Method 1: Standard /me/messages with appsecret_proof
+        success = try_send_with_me_endpoint(recipient_id, text)
+        if success:
+            return
+            
+        # Method 2: Try with specific page ID if we can get it
+        success = try_send_with_page_id(recipient_id, text)
+        if success:
+            return
+            
+        # Method 3: Try batch request as a last resort
+        success = try_send_with_batch(recipient_id, text)
+        if success:
+            return
+            
+        print("❌ All send methods failed")
+        
+    except Exception as e:
+        print(f"❌ Error in send_message: {str(e)}")
+
+def try_send_with_me_endpoint(recipient_id, text):
+    """Try sending with /me/messages endpoint"""
+    try:
         url = "https://graph.facebook.com/v18.0/me/messages"
         
         payload = {
             "recipient": {"id": recipient_id},
             "message": {"text": text},
-            "messaging_type": "RESPONSE"  # Required for newer API versions
+            "messaging_type": "RESPONSE"
         }
         
-        # Generate appsecret_proof for enhanced security
         appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
-        
-        if not appsecret_proof:
-            print("❌ Failed to generate appsecret_proof")
-            return
         
         params = {
             "access_token": PAGE_ACCESS_TOKEN,
             "appsecret_proof": appsecret_proof
         }
         
-        headers = {
-            'Content-Type': 'application/json'
-        }
+        headers = {'Content-Type': 'application/json'}
         
-        print(f"Sending message to {recipient_id}: {text}")
-        print(f"Using URL: {url}")
-        print(f"Access token length: {len(PAGE_ACCESS_TOKEN)}")
+        print(f"Trying /me/messages endpoint...")
+        response = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
         
-        response = requests.post(
-            url,
-            params=params,
-            json=payload,
-            headers=headers,
-            timeout=10
-        )
-        
-        print(f"Send message response status: {response.status_code}")
-        print(f"Response: {response.text}")
-        
+        print(f"Response status: {response.status_code}")
         if response.status_code == 200:
-            print("✅ Message sent successfully")
-            response_data = response.json()
-            print(f"Message ID: {response_data.get('message_id', 'N/A')}")
+            print("✅ Message sent successfully with /me/messages")
+            return True
         else:
-            print(f"❌ Failed to send message. Status: {response.status_code}")
-            
-            # Try without appsecret_proof
-            print("Trying without appsecret_proof...")
-            params_simple = {"access_token": PAGE_ACCESS_TOKEN}
-            
-            response_fallback = requests.post(
-                url,
-                params=params_simple,
-                json=payload,
-                headers=headers,
-                timeout=10
-            )
-            
-            print(f"Fallback response status: {response_fallback.status_code}")
-            print(f"Fallback response: {response_fallback.text}")
-            
-            if response_fallback.status_code == 200:
-                print("✅ Fallback method (without appsecret_proof) succeeded")
-            else:
-                print("❌ Both methods failed")
+            print(f"❌ /me/messages failed: {response.text}")
+            return False
             
     except Exception as e:
-        print(f"❌ Error sending message: {str(e)}")
+        print(f"Error with /me/messages: {str(e)}")
+        return False
+
+def try_send_with_page_id(recipient_id, text):
+    """Try sending with specific page ID"""
+    try:
+        # First, get the page ID from the token
+        page_id = get_page_id_from_token()
+        if not page_id:
+            print("❌ Could not get page ID")
+            return False
+            
+        url = f"https://graph.facebook.com/v18.0/{page_id}/messages"
+        
+        payload = {
+            "recipient": {"id": recipient_id},
+            "message": {"text": text},
+            "messaging_type": "RESPONSE"
+        }
+        
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof
+        }
+        
+        headers = {'Content-Type': 'application/json'}
+        
+        print(f"Trying page ID endpoint: {page_id}")
+        response = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
+        
+        print(f"Response status: {response.status_code}")
+        if response.status_code == 200:
+            print("✅ Message sent successfully with page ID")
+            return True
+        else:
+            print(f"❌ Page ID method failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error with page ID method: {str(e)}")
+        return False
+
+def try_send_with_batch(recipient_id, text):
+    """Try sending using batch request"""
+    try:
+        url = "https://graph.facebook.com/v18.0/"
+        
+        # Create batch request
+        batch_request = [{
+            "method": "POST",
+            "relative_url": "me/messages",
+            "body": f"recipient={{\"id\":\"{recipient_id}\"}}&message={{\"text\":\"{text}\"}}&messaging_type=RESPONSE"
+        }]
+        
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof,
+            "batch": json.dumps(batch_request)
+        }
+        
+        print(f"Trying batch request...")
+        response = requests.post(url, params=params, timeout=10)
+        
+        print(f"Batch response status: {response.status_code}")
+        if response.status_code == 200:
+            batch_results = response.json()
+            if batch_results and len(batch_results) > 0 and batch_results[0].get('code') == 200:
+                print("✅ Message sent successfully with batch request")
+                return True
+            else:
+                print(f"❌ Batch request failed: {batch_results}")
+                return False
+        else:
+            print(f"❌ Batch request failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error with batch request: {str(e)}")
+        return False
+
+def get_page_id_from_token():
+    """Extract page ID from the access token"""
+    try:
+        # Try to get page info using the token
+        url = "https://graph.facebook.com/v18.0/me"
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            page_id = data.get('id')
+            print(f"Retrieved page ID: {page_id}")
+            return page_id
+        else:
+            print(f"Failed to get page ID: {response.text}")
+            
+            # Try without appsecret_proof
+            params_simple = {"access_token": PAGE_ACCESS_TOKEN}
+            response = requests.get(url, params=params_simple, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                page_id = data.get('id')
+                print(f"Retrieved page ID (without proof): {page_id}")
+                return page_id
+            else:
+                print(f"Failed to get page ID (both methods): {response.text}")
+                return None
+                
+    except Exception as e:
+        print(f"Error getting page ID: {str(e)}")
+        return None
 
 def debug_token():
     """Debug the access token to check its validity and permissions"""
     try:
+        print("=== TOKEN DEBUGGING ===")
+        
+        # Method 1: Try with app token (if available)
         debug_url = "https://graph.facebook.com/debug_token"
+        
+        # For debugging, we need an app access token or use the same token
         params = {
             "input_token": PAGE_ACCESS_TOKEN,
-            "access_token": PAGE_ACCESS_TOKEN
+            "access_token": PAGE_ACCESS_TOKEN  # Using same token for now
         }
         
         response = requests.get(debug_url, params=params)
+        print(f"Token debug status: {response.status_code}")
         print(f"Token debug response: {response.text}")
         
         if response.status_code == 200:
             data = response.json()
             if 'data' in data:
                 token_data = data['data']
-                print(f"Token is valid: {token_data.get('is_valid', False)}")
-                print(f"App ID: {token_data.get('app_id', 'N/A')}")
-                print(f"User ID: {token_data.get('user_id', 'N/A')}")
-                print(f"Scopes: {token_data.get('scopes', [])}")
-                print(f"Expires at: {token_data.get('expires_at', 'Never')}")
+                print(f"✅ Token is valid: {token_data.get('is_valid', False)}")
+                print(f"📱 App ID: {token_data.get('app_id', 'N/A')}")
+                print(f"👤 User ID: {token_data.get('user_id', 'N/A')}")
+                print(f"🔑 Scopes: {token_data.get('scopes', [])}")
+                print(f"⏰ Expires at: {token_data.get('expires_at', 'Never')}")
+                print(f"🏷️  Type: {token_data.get('type', 'Unknown')}")
+                
+                # Check if it's a page token
+                if token_data.get('type') == 'PAGE':
+                    print("✅ This is a Page Access Token")
+                else:
+                    print("⚠️  This might not be a Page Access Token")
+            else:
+                print("❌ No token data in response")
+        else:
+            print("❌ Token debug failed")
         
     except Exception as e:
         print(f"Error debugging token: {str(e)}")
 
 def test_page_info():
-    """Test if we can get page information"""
+    """Test if we can get page information using various methods"""
     try:
-        url = "https://graph.facebook.com/v18.0/me"
-        params = {"access_token": PAGE_ACCESS_TOKEN}
+        print("\n=== PAGE INFO TESTING ===")
         
-        response = requests.get(url, params=params)
-        print(f"Page info response: {response.text}")
+        # Method 1: Try /me endpoint with appsecret_proof
+        print("Testing /me endpoint with appsecret_proof...")
+        url = "https://graph.facebook.com/v18.0/me"
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.text}")
         
         if response.status_code == 200:
             data = response.json()
-            print(f"Page Name: {data.get('name', 'N/A')}")
-            print(f"Page ID: {data.get('id', 'N/A')}")
-            print(f"Category: {data.get('category', 'N/A')}")
+            print(f"✅ Page Name: {data.get('name', 'N/A')}")
+            print(f"✅ Page ID: {data.get('id', 'N/A')}")
+            print(f"✅ Category: {data.get('category', 'N/A')}")
+            return data.get('id')  # Return page ID for later use
+        
+        # Method 2: Try without appsecret_proof
+        print("\nTesting /me endpoint without appsecret_proof...")
+        params_simple = {"access_token": PAGE_ACCESS_TOKEN}
+        response = requests.get(url, params=params_simple, timeout=10)
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ Page Name: {data.get('name', 'N/A')}")
+            print(f"✅ Page ID: {data.get('id', 'N/A')}")
+            print(f"✅ Category: {data.get('category', 'N/A')}")
+            return data.get('id')
+        
+        print("❌ Both page info methods failed")
+        return None
         
     except Exception as e:
         print(f"Error getting page info: {str(e)}")
+        return None
+
+def test_send_api():
+    """Test the send API with a dummy recipient"""
+    try:
+        print("\n=== SEND API TESTING ===")
+        print("This will test the send API structure (should fail with invalid recipient)")
+        
+        # Use a dummy recipient ID for testing
+        test_recipient = "100000000000000"  # This will fail but show us the API response
+        test_message = "Test message"
+        
+        url = "https://graph.facebook.com/v18.0/me/messages"
+        
+        payload = {
+            "recipient": {"id": test_recipient},
+            "message": {"text": test_message},
+            "messaging_type": "RESPONSE"
+        }
+        
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
+        
+        params = {
+            "access_token": PAGE_ACCESS_TOKEN,
+            "appsecret_proof": appsecret_proof
+        }
+        
+        headers = {'Content-Type': 'application/json'}
+        
+        response = requests.post(url, params=params, json=payload, headers=headers, timeout=10)
+        print(f"Send API test status: {response.status_code}")
+        print(f"Send API test response: {response.text}")
+        
+        # This should fail with invalid recipient, but if it fails with permission error,
+        # that tells us about the token issue
+        
+    except Exception as e:
+        print(f"Error testing send API: {str(e)}")
+
+def comprehensive_diagnostics():
+    """Run all diagnostic tests"""
+    print("🔍 Running comprehensive diagnostics...")
+    print(f"📝 Access token length: {len(PAGE_ACCESS_TOKEN)}")
+    print(f"📝 App secret length: {len(APP_SECRET)}")
+    
+    debug_token()
+    page_id = test_page_info()
+    test_send_api()
+    
+    print("\n=== RECOMMENDATIONS ===")
+    if not page_id:
+        print("❌ CRITICAL: Cannot access page information")
+        print("   - Your PAGE_ACCESS_TOKEN might be invalid or expired")
+        print("   - Make sure it's a Page Access Token, not a User Access Token")
+        print("   - Check that the token has 'pages_messaging' permission")
+        print("   - Regenerate the token in Facebook Developer Console")
+    else:
+        print("✅ Page access seems to work")
+        print("   - The messaging issue might be permissions-related")
+        print("   - Make sure your webhook is properly configured")
+        print("   - Check that 'messages' events are subscribed in webhook settings")
 
 if __name__ == '__main__':
     print("Starting Facebook Weather Bot...")
-    print("\n=== Running diagnostics ===")
-    debug_token()
-    test_page_info()
-    print("=== End diagnostics ===\n")
+    print("\n" + "="*50)
+    comprehensive_diagnostics()
+    print("="*50 + "\n")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
