@@ -10,7 +10,7 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"  # Must match the one in your FB App
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPA77hl3xKE78EkgplIHf8jxYSTeIrQZAtScP78GJQBws6uDDYq4QMpW3jIMaZBxPUVYFcI7kMY3mgrvJD0XiFYLoR7NA9vbcZAY8Jpf7Hs3IZB86zZCiIZAuujba8OUF9LG5JYWaapjMQApHi34A3RsZA1ALizCnehVCNsYMbgiMnrZCssONrKFqCmGBdznZBE2Stf0xhoelca7CcPHHlbN4MBZCMT8gZDZD"
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPaByGZAt7irvSaOUmqdVqb5w6EpOiLivl5tx9FLtZCn8V3ncJyYA7fo4OwNVMgKzBZABJbPuLoPn3yaxrVDsPXbMDMRZAZC4saxPzr6hD3vxOUQ6hTx3Km23ASMp3FMmdcrHOjia0HVmdAHw1uQBB9b2lZAhtZBuRg94CikZAKZBmxkwZCuXfzEIyuxIgG6JkXwOhfNdVZAXuiiG7qVQxnj8ZCze1T2gx2LXkXYGwZDZD"
 APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"  # Your actual App Secret
 
 def generate_appsecret_proof(access_token, app_secret):
@@ -200,8 +200,8 @@ def get_weather(place):
 def send_message(recipient_id, text):
     """Send a message to the user via Facebook Messenger API"""
     try:
-        # Use the page ID instead of 'me' - extract from your webhook data
-        PAGE_ID = "715906884939884"  # This is your page ID from the logs
+        # Use the correct page ID from your debug results
+        PAGE_ID = "122123589554894945"  # Your actual page ID
         
         url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/messages"
         
