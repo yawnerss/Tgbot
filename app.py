@@ -10,11 +10,11 @@ app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"
-PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPFT28mVfG3Ue7laf9IipxF8whgIB5Jd4OZA2x5BFg6ciIpRL0mBiWMuTQU4yxl4YDOkJZA4dgaox9TXytcr958AZCEZA3XaaPlE4RAtRwfHZAkza3ox5lUEH0aXdhDyZB6eAniDEylZCUdsSOP4tFWD5iV5kTnmZCJFLuYKfb6pHUKVPZCozt6V0GguWnpoKc5qhb0kXiszpHzSGDXepPjCLd8KOzuKfZAZBrFNNQZDZD"
-APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
 
-# Your actual page ID that has messaging permissions
-PAGE_ID = "715906884939884"
+# 🔥 REPLACE THIS WITH YOUR PAGE ACCESS TOKEN FROM THE TOKEN FIXER SCRIPT
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPJcxi3CsHznFdxwQ160air0G2mP0oqMezlniiKZBhcd2ZCnyBnZBwtmKpflYCtZA9Ku5OVzd4tO6FUYLi1W5UDYysZCN8yP3Fm7ElMIlCok03FvZB3weT6XFZCmNLpHaKiBE74fnfFucb5ZAaEqZBJB7xltvc7JKTCfzxKkDrZCKMAIg8oTk0LEIkADI41M8nZC1LoGkGOlgb0BcDOTV5j2co5ZCstOhB6i65cZD"
+
+APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
 
 def generate_appsecret_proof(access_token, app_secret):
     """Generate the appsecret_proof required by Facebook"""
@@ -81,8 +81,13 @@ def handle_message(sender_id, message):
         else:
             reply = "⛅ Type `weather <city>` to get Philippine weather.\n\nExample: `weather Cebu`"
         
-        # Simple send - just try once with the correct setup
-        send_message_simple(sender_id, reply)
+        # Send message using Page Access Token
+        success = send_message(sender_id, reply)
+        
+        if success:
+            print("✅ Message sent successfully!")
+        else:
+            print("❌ Failed to send message")
         
     except Exception as e:
         print(f"Error handling message: {str(e)}")
@@ -163,25 +168,21 @@ def get_weather(place):
     except Exception as e:
         return f"⚠️ Error fetching weather: {str(e)}"
 
-def send_message_simple(recipient_id, text):
-    """Simple message sending - one method, clear logging"""
+def send_message(recipient_id, text):
+    """Send message using Page Access Token"""
     try:
-        print(f"📤 Attempting to send: '{text[:50]}...' to {recipient_id}")
+        print(f"📤 Sending: '{text[:50]}...' to {recipient_id}")
         
-        # Use the page ID directly with v23.0 API
-        url = f"https://graph.facebook.com/v23.0/{PAGE_ID}/messages"
+        url = "https://graph.facebook.com/v18.0/me/messages"
         
         payload = {
+            "messaging_type": "RESPONSE",
             "recipient": {"id": recipient_id},
-            "message": {"text": text},
-            "messaging_type": "RESPONSE"
+            "message": {"text": text}
         }
         
         # Generate appsecret_proof
         appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET)
-        if not appsecret_proof:
-            print("❌ Failed to generate appsecret_proof")
-            return False
         
         params = {
             "access_token": PAGE_ACCESS_TOKEN,
@@ -190,54 +191,44 @@ def send_message_simple(recipient_id, text):
         
         headers = {'Content-Type': 'application/json'}
         
-        # Make the request
         response = requests.post(url, params=params, json=payload, headers=headers, timeout=15)
         
-        print(f"📡 Response Status: {response.status_code}")
-        print(f"📡 Response Body: {response.text}")
+        print(f"📡 Status: {response.status_code}")
+        print(f"📡 Response: {response.text}")
         
         if response.status_code == 200:
             print("✅ MESSAGE SENT SUCCESSFULLY!")
-            result = response.json()
-            print(f"✅ Message ID: {result.get('message_id', 'N/A')}")
             return True
         else:
-            print(f"❌ FAILED TO SEND MESSAGE")
-            print(f"❌ Status: {response.status_code}")
-            print(f"❌ Error: {response.text}")
+            print("❌ Failed to send message")
             return False
         
-    except requests.exceptions.Timeout:
-        print("❌ Request timed out")
-        return False
     except Exception as e:
-        print(f"❌ Exception occurred: {str(e)}")
+        print(f"❌ Error sending message: {str(e)}")
         return False
 
-def test_send():
-    """Test function to verify sending works"""
-    print("🧪 Testing message sending...")
+def validate_setup():
+    """Validate that we have the correct Page Access Token"""
+    if PAGE_ACCESS_TOKEN == "REPLACE_WITH_PAGE_TOKEN_FROM_FIXER_SCRIPT":
+        print("❌ CRITICAL: You need to replace PAGE_ACCESS_TOKEN!")
+        print("❌ Run the token_fixer.py script first to get your Page Access Token")
+        return False
     
-    # Test with a dummy recipient (this will fail but show us if the API structure is correct)
-    test_recipient = "100000000000000"
-    test_message = "Test message from bot"
-    
-    result = send_message_simple(test_recipient, test_message)
-    
-    if result:
-        print("✅ Test passed - API structure is correct")
-    else:
-        print("❌ Test failed - Check the logs above for details")
+    print("✅ Page Access Token has been set")
+    print(f"📝 Token length: {len(PAGE_ACCESS_TOKEN)}")
+    return True
 
 if __name__ == '__main__':
-    print("🤖 Starting SIMPLE Facebook Weather Bot...")
-    print(f"📝 Using Page ID: {PAGE_ID}")
-    print(f"📝 Token length: {len(PAGE_ACCESS_TOKEN)}")
-    print(f"📝 App Secret length: {len(APP_SECRET)}")
+    print("🤖 Starting Corrected Facebook Weather Bot...")
+    print("="*50)
     
-    print("\n" + "="*50)
-    test_send()
-    print("="*50 + "\n")
+    if not validate_setup():
+        print("\n🔧 STEPS TO FIX:")
+        print("1. Run the token_fixer.py script")
+        print("2. Copy the Page Access Token it gives you")
+        print("3. Replace PAGE_ACCESS_TOKEN in this file")
+        print("4. Restart the bot")
+        exit(1)
     
     print("🚀 Starting Flask server...")
     app.run(debug=True, host='0.0.0.0', port=5000)
