@@ -134,7 +134,7 @@ def get_weather(place):
         
         # Check if it's a Philippine city
         if weather_data.get('sys', {}).get('country') != 'PH':
-            return f"🌏 '{place}' is not in the Philippines. Only Philippine cities are supported."
+            return f"🌏 '{place}' walang ganyan sa philippines hoy!!. Only Philippine cities are supported."
         
         # Extract weather information
         main = weather_data['main']
