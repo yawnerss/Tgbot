@@ -16,18 +16,18 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"
 
-# 🔥 REPLACE THIS WITH YOUR PAGE ACCESS TOKEN FROEAAKSSCUQjUIBPPJcxi3CsHznFdxwQ160air0G2mP0oqMezlniiKZBhcd2ZCnyBnZBwtmKpflYCtZA9Ku5OVzd4tO6FUYLi1W5UDYysZCN8yP3Fm7ElMM THE TOKEN FIXER SCRIPT
+# 🔥 REPLACE THIS WITH YOUR PAGE ACCESS TOKEN FROM THE TOKEN FIXER SCRIPT
 PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW"
 
 APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
 
-# Environment detection
+# Environment detection - Render sets PORT environment variable
+PORT = int(os.environ.get('PORT', 5000))
 IS_RENDER = os.environ.get('RENDER') == 'true'
 IS_LOCAL_DEV = not IS_RENDER
 
 # Ngrok configuration (only for local development)
 NGROK_AUTH_TOKEN = "2tg4R7Z2XMTRvYB0xVnahf5HSyT_4r1TrduzXeusci4Q7VXgY"
-FLASK_PORT = int(os.environ.get('PORT', 5000))  # Render uses PORT env variable
 ngrok_url = None
 
 def setup_ngrok():
@@ -49,9 +49,9 @@ def setup_ngrok():
         print("✅ Ngrok auth token configured")
         
         # Start ngrok in background
-        print(f"🚀 Starting ngrok tunnel on port {FLASK_PORT}...")
+        print(f"🚀 Starting ngrok tunnel on port {PORT}...")
         ngrok_process = subprocess.Popen([
-            "ngrok", "http", str(FLASK_PORT), "--log=stdout"
+            "ngrok", "http", str(PORT), "--log=stdout"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
         # Wait for ngrok to start and get the URL
@@ -112,7 +112,7 @@ def verify():
     elif mode is None and token is None:
         status_msg = "🤖 Philippine Weather Bot is running!"
         if IS_RENDER:
-            status_msg += "<br>🌐 Hosted on Render 24/7"
+            status_msg += f"<br>🌐 Hosted on Render 24/7 (Port: {PORT})"
         else:
             status_msg += f"<br>📡 Local dev with ngrok: {ngrok_url or 'Starting...'}"
         return status_msg, 200
@@ -122,7 +122,7 @@ def verify():
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for Render"""
-    return {"status": "healthy", "bot": "Philippine Weather Bot"}, 200
+    return {"status": "healthy", "bot": "Philippine Weather Bot", "port": PORT}, 200
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -298,7 +298,7 @@ def send_message(recipient_id, text):
 
 def validate_setup():
     """Validate that we have the correct Page Access Token"""
-    if PAGE_ACCESS_TOKEN == "REPLACE_WITH_PAGE_TOKEN_FROM_FIXER_SCRIPT":
+    if "REPLACE_WITH_PAGE_TOKEN_FROM_FIXER_SCRIPT" in PAGE_ACCESS_TOKEN:
         print("❌ CRITICAL: You need to replace PAGE_ACCESS_TOKEN!")
         print("❌ Run the token_fixer.py script first to get your Page Access Token")
         return False
@@ -307,24 +307,16 @@ def validate_setup():
     print(f"📝 Token length: {len(PAGE_ACCESS_TOKEN)}")
     return True
 
-def start_flask_server():
-    """Start Flask server"""
-    if IS_RENDER:
-        print(f"🚀 Starting Flask server on Render (port {FLASK_PORT})...")
-        app.run(debug=False, host='0.0.0.0', port=FLASK_PORT)
-    else:
-        print(f"🚀 Starting Flask server locally (port {FLASK_PORT})...")
-        app.run(debug=False, host='0.0.0.0', port=FLASK_PORT, use_reloader=False)
-
+# This is the main entry point for both Render and local development
 if __name__ == '__main__':
+    print(f"🌐 Philippine Weather Bot starting on port {PORT}...")
+    
     if IS_RENDER:
-        print("🌐 Starting Facebook Weather Bot on Render...")
-        print("="*50)
         print("🔥 RENDER DEPLOYMENT MODE")
+        print(f"🚀 Binding to PORT: {PORT}")
     else:
-        print("💻 Starting Facebook Weather Bot locally with Ngrok...")
-        print("="*50)
         print("🔧 LOCAL DEVELOPMENT MODE")
+        print(f"💻 Local server will run on port {PORT}")
     
     if not validate_setup():
         print("\n🔧 STEPS TO FIX:")
@@ -339,20 +331,15 @@ if __name__ == '__main__':
         ngrok_process = setup_ngrok()
         
         try:
-            # Start Flask server in thread for local dev
-            flask_thread = threading.Thread(target=start_flask_server, daemon=True)
-            flask_thread.start()
-            
-            print("\n🎉 Local development bot is running!")
-            print(f"📡 Local server: http://localhost:{FLASK_PORT}")
+            print(f"\n🎉 Starting local development server on port {PORT}...")
+            print(f"📡 Local server: http://localhost:{PORT}")
             if ngrok_url:
                 print(f"🌐 Public URL: {ngrok_url}")
                 print(f"\n🔧 Use this webhook URL: {ngrok_url}")
             print("\n⏹️  Press Ctrl+C to stop the bot")
             
-            # Keep the main thread alive
-            while True:
-                time.sleep(1)
+            # Run Flask server
+            app.run(debug=False, host='0.0.0.0', port=PORT, use_reloader=False)
                 
         except KeyboardInterrupt:
             print("\n🛑 Stopping local bot...")
@@ -364,7 +351,10 @@ if __name__ == '__main__':
             if ngrok_process:
                 ngrok_process.terminate()
     else:
-        # Direct Flask start for Render
+        # Render deployment
         print("🌐 Bot will be available at your Render URL")
         print("📝 Use your Render URL as webhook in Facebook")
-        start_flask_server()
+        print(f"🚀 Starting Flask server on 0.0.0.0:{PORT}")
+        
+        # For Render, run directly (gunicorn will handle this)
+        app.run(debug=False, host='0.0.0.0', port=PORT)
