@@ -3,3 +3,5 @@ requests
 urllib3
 gunicorn
 hashlib
+re
+json
