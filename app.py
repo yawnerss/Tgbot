@@ -4,6 +4,11 @@ import requests
 import urllib3
 import hmac
 import hashlib
+import os
+import threading
+import time
+import subprocess
+import sys
 from flask import Flask, request
 
 app = Flask(__name__)
@@ -15,6 +20,73 @@ VERIFY_TOKEN = "verify-me"
 PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPJcxi3CsHznFdxwQ160air0G2mP0oqMezlniiKZBhcd2ZCnyBnZBwtmKpflYCtZA9Ku5OVzd4tO6FUYLi1W5UDYysZCN8yP3Fm7ElMIlCok03FvZB3weT6XFZCmNLpHaKiBE74fnfFucb5ZAaEqZBJB7xltvc7JKTCfzxKkDrZCKMAIg8oTk0LEIkADI41M8nZC1LoGkGOlgb0BcDOTV5j2co5ZCstOhB6i65cZD"
 
 APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
+
+# Environment detection
+IS_RENDER = os.environ.get('RENDER') == 'true'
+IS_LOCAL_DEV = not IS_RENDER
+
+# Ngrok configuration (only for local development)
+NGROK_AUTH_TOKEN = "2tg4R7Z2XMTRvYB0xVnahf5HSyT_4r1TrduzXeusci4Q7VXgY"
+FLASK_PORT = int(os.environ.get('PORT', 5000))  # Render uses PORT env variable
+ngrok_url = None
+
+def setup_ngrok():
+    """Setup and start ngrok tunnel (local development only)"""
+    global ngrok_url
+    
+    if IS_RENDER:
+        print("🚀 Running on Render - Ngrok not needed")
+        return None
+    
+    try:
+        print("🔧 Setting up ngrok for local development...")
+        
+        # Set auth token
+        subprocess.run([
+            "ngrok", "config", "add-authtoken", NGROK_AUTH_TOKEN
+        ], check=True, capture_output=True)
+        
+        print("✅ Ngrok auth token configured")
+        
+        # Start ngrok in background
+        print(f"🚀 Starting ngrok tunnel on port {FLASK_PORT}...")
+        ngrok_process = subprocess.Popen([
+            "ngrok", "http", str(FLASK_PORT), "--log=stdout"
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+        # Wait for ngrok to start and get the URL
+        time.sleep(3)
+        
+        # Get ngrok URL from API
+        try:
+            response = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
+            if response.status_code == 200:
+                tunnels = response.json()["tunnels"]
+                if tunnels:
+                    ngrok_url = tunnels[0]["public_url"]
+                    print(f"✅ Ngrok tunnel active: {ngrok_url}")
+                    print("="*60)
+                    print("🔗 LOCAL DEVELOPMENT WEBHOOK URL:")
+                    print(f"   {ngrok_url}")
+                    print("="*60)
+                    return ngrok_process
+                else:
+                    print("❌ No ngrok tunnels found")
+            else:
+                print(f"❌ Failed to get ngrok status: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error getting ngrok URL: {e}")
+            
+        return ngrok_process
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error setting up ngrok: {e}")
+        print("💡 Make sure ngrok is installed: https://ngrok.com/download")
+        return None
+    except FileNotFoundError:
+        print("❌ Ngrok not found! Please install ngrok for local development.")
+        print("💡 Download from: https://ngrok.com/download")
+        return None
 
 def generate_appsecret_proof(access_token, app_secret):
     """Generate the appsecret_proof required by Facebook"""
@@ -38,9 +110,19 @@ def verify():
         print("✅ Webhook verified successfully!")
         return challenge, 200
     elif mode is None and token is None:
-        return "Bot is running", 200
+        status_msg = "🤖 Philippine Weather Bot is running!"
+        if IS_RENDER:
+            status_msg += "<br>🌐 Hosted on Render 24/7"
+        else:
+            status_msg += f"<br>📡 Local dev with ngrok: {ngrok_url or 'Starting...'}"
+        return status_msg, 200
     else:
         return "Verification failed", 403
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Render"""
+    return {"status": "healthy", "bot": "Philippine Weather Bot"}, 200
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -134,7 +216,7 @@ def get_weather(place):
         
         # Check if it's a Philippine city
         if weather_data.get('sys', {}).get('country') != 'PH':
-            return f"🌏 '{place}' walang ganyan sa philippines hoy!!. Only Philippine cities are supported."
+            return f"🌏 '{place}' is not in the Philippines. Only Philippine cities are supported."
         
         # Extract weather information
         main = weather_data['main']
@@ -225,9 +307,24 @@ def validate_setup():
     print(f"📝 Token length: {len(PAGE_ACCESS_TOKEN)}")
     return True
 
+def start_flask_server():
+    """Start Flask server"""
+    if IS_RENDER:
+        print(f"🚀 Starting Flask server on Render (port {FLASK_PORT})...")
+        app.run(debug=False, host='0.0.0.0', port=FLASK_PORT)
+    else:
+        print(f"🚀 Starting Flask server locally (port {FLASK_PORT})...")
+        app.run(debug=False, host='0.0.0.0', port=FLASK_PORT, use_reloader=False)
+
 if __name__ == '__main__':
-    print("🤖 Starting Corrected Facebook Weather Bot...")
-    print("="*50)
+    if IS_RENDER:
+        print("🌐 Starting Facebook Weather Bot on Render...")
+        print("="*50)
+        print("🔥 RENDER DEPLOYMENT MODE")
+    else:
+        print("💻 Starting Facebook Weather Bot locally with Ngrok...")
+        print("="*50)
+        print("🔧 LOCAL DEVELOPMENT MODE")
     
     if not validate_setup():
         print("\n🔧 STEPS TO FIX:")
@@ -235,7 +332,39 @@ if __name__ == '__main__':
         print("2. Copy the Page Access Token it gives you")
         print("3. Replace PAGE_ACCESS_TOKEN in this file")
         print("4. Restart the bot")
-        exit(1)
+        sys.exit(1)
     
-    print("🚀 Starting Flask server...")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    if IS_LOCAL_DEV:
+        # Setup ngrok tunnel for local development
+        ngrok_process = setup_ngrok()
+        
+        try:
+            # Start Flask server in thread for local dev
+            flask_thread = threading.Thread(target=start_flask_server, daemon=True)
+            flask_thread.start()
+            
+            print("\n🎉 Local development bot is running!")
+            print(f"📡 Local server: http://localhost:{FLASK_PORT}")
+            if ngrok_url:
+                print(f"🌐 Public URL: {ngrok_url}")
+                print(f"\n🔧 Use this webhook URL: {ngrok_url}")
+            print("\n⏹️  Press Ctrl+C to stop the bot")
+            
+            # Keep the main thread alive
+            while True:
+                time.sleep(1)
+                
+        except KeyboardInterrupt:
+            print("\n🛑 Stopping local bot...")
+            if ngrok_process:
+                ngrok_process.terminate()
+            print("✅ Bot stopped successfully!")
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            if ngrok_process:
+                ngrok_process.terminate()
+    else:
+        # Direct Flask start for Render
+        print("🌐 Bot will be available at your Render URL")
+        print("📝 Use your Render URL as webhook in Facebook")
+        start_flask_server()
