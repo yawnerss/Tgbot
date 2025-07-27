@@ -161,7 +161,14 @@ def get_weather(place):
         if clouds.get('all') is not None:
             weather_response += f"☁️ Clouds: {clouds['all']}%\n"
         
-        weather_response += f"🌈 {weather['description'].capitalize()}"
+        # Custom weather description handling
+        weather_desc = weather['description'].lower()
+        if 'overcast' in weather_desc and 'cloud' in weather_desc:
+            display_desc = "Overcast cloud baka uulan"
+        else:
+            display_desc = weather['description'].capitalize()
+        
+        weather_response += f"🌈 {display_desc}"
         
         return weather_response
         
