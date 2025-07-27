@@ -11,7 +11,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 VERIFY_TOKEN = "verify-me"
 PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPPaByGZAt7irvSaOUmqdVqb5w6EpOiLivl5tx9FLtZCn8V3ncJyYA7fo4OwNVMgKzBZABJbPuLoPn3yaxrVDsPXbMDMRZAZC4saxPzr6hD3vxOUQ6hTx3Km23ASMp3FMmdcrHOjia0HVmdAHw1uQBB9b2lZAhtZBuRg94CikZAKZBmxkwZCuXfzEIyuxIgG6JkXwOhfNdVZAXuiiG7qVQxnj8ZCze1T2gx2LXkXYGwZDZD"
-APP_SECRET = "4abeeaa775731c09f6b78a4000668a45"
+APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
 
 # Your actual page ID that has messaging permissions
 PAGE_ID = "715906884939884"
