@@ -2,3 +2,4 @@ Flask
 requests
 urllib3
 gunicorn
+hashlib
