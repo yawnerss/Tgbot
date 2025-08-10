@@ -35,14 +35,32 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Add a tokens.json loader directly after the imports
+def load_tokens_from_file(path="tokens.json"):
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # only set if not already defined in environment (env overrides file)
+            if isinstance(data, dict):
+                os.environ.setdefault("PAGE_ACCESS_TOKEN", data.get("PAGE_ACCESS_TOKEN", ""))
+                os.environ.setdefault("APP_SECRET", data.get("APP_SECRET", ""))
+                os.environ.setdefault("VERIFY_TOKEN", data.get("VERIFY_TOKEN", "verify-me"))
+                os.environ.setdefault("NGROK_AUTH_TOKEN", data.get("NGROK_AUTH_TOKEN", ""))
+            print("🔐 Loaded tokens from tokens.json")
+    except Exception as e:
+        print(f"⚠️ Could not load tokens.json: {e}")
+
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "verify-me")
+# Load tokens from file first (so you don't have to reapply each run)
+load_tokens_from_file()
 
-# Strongly recommended: set these as env vars in production
-PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN", "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW")
-APP_SECRET = os.environ.get("APP_SECRET", "07f1df1bf9c213eb6a618908fab18189")
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "verify-me")
+PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW"
+APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
+NGROK_AUTH_TOKEN = "2tg4R7Z2XMTRvYB0xVnahf5HSyT_4r1TrduzXeusci4Q7VXgY"
 
 # Environment detection - Render sets PORT environment variable
 PORT = int(os.environ.get("PORT", 5000))
@@ -50,7 +68,6 @@ IS_RENDER = os.environ.get("RENDER") == "true"
 IS_LOCAL_DEV = not IS_RENDER
 
 # Ngrok configuration (only for local development)
-NGROK_AUTH_TOKEN = os.environ.get("NGROK_AUTH_TOKEN", "")
 ngrok_url: Optional[str] = None
 
 # Optional local JSON persistence (best-effort for local dev)
@@ -135,21 +152,23 @@ def generate_appsecret_proof(access_token: str, app_secret: str) -> Optional[str
 def send_message(recipient_id: str, text: str) -> bool:
     """Send message using Page Access Token"""
     try:
-        if not PAGE_ACCESS_TOKEN or "YOUR_PAGE_ACCESS_TOKEN" in PAGE_ACCESS_TOKEN:
+        if not PAGE_ACCESS_TOKEN:
             print("❌ PAGE_ACCESS_TOKEN is not set. Cannot send message.")
             return False
 
         print(f"📤 Sending: '{text[:120]}...' to {recipient_id}")
-        url = "https://graph.facebook.com/v18.0/715906884939884/messages?access_token=EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW"
-        
+        url = "https://graph.facebook.com/v18.0/me/messages"
+
         payload = {
             "messaging_type": "RESPONSE",
             "recipient": {"id": recipient_id},
             "message": {"text": text},
         }
 
-        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET or "")
         params = {"access_token": PAGE_ACCESS_TOKEN}
+
+        # App Secret Proof (must match the app that owns the token)
+        appsecret_proof = generate_appsecret_proof(PAGE_ACCESS_TOKEN, APP_SECRET or "")
         if appsecret_proof:
             params["appsecret_proof"] = appsecret_proof
 
@@ -197,7 +216,7 @@ def get_weather(place: str) -> str:
         if response.status_code != 200:
             return "❌ Weather service is currently unavailable."
 
-        match = re.search(r"$$(\{.*\})$$", response.text)
+        match = re.search(r'$$(\{.*\})$$', response.text, flags=re.DOTALL)
         if not match:
             return "❌ Couldn't fetch weather info."
 
@@ -462,9 +481,11 @@ def handle_message(sender_id: str, message: str):
 # Startup
 # -----------------------------------------------------------------------------
 def validate_setup() -> bool:
-    if not PAGE_ACCESS_TOKEN or "you pages access token" in PAGE_ACCESS_TOKEN:
-        print("❌ CRITICAL: You need to set PAGE_ACCESS_TOKEN!")
+    if not PAGE_ACCESS_TOKEN:
+        print("❌ CRITICAL: You need to set PAGE_ACCESS_TOKEN (in tokens.json or environment)!")
         return False
+    if not APP_SECRET:
+        print("⚠️ APP_SECRET is empty. App Secret Proof will not be added (may be required by your app).")
     print("✅ Page Access Token set")
     print(f"📝 Token length: {len(PAGE_ACCESS_TOKEN)}")
     return True
@@ -515,4 +536,3 @@ if __name__ == "__main__":
         print(f"❌ Unexpected error: {e}")
         if ngrok_process:
             ngrok_process.terminate()
-
