@@ -60,6 +60,7 @@ load_tokens_from_file()
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "verify-me")
 PAGE_ACCESS_TOKEN = "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW"
 APP_SECRET = "07f1df1bf9c213eb6a618908fab18189"
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "439d4b804bc8187953eb36d2a8c26a02")
 NGROK_AUTH_TOKEN = "2tg4R7Z2XMTRvYB0xVnahf5HSyT_4r1TrduzXeusci4Q7VXgY"
 
 # Environment detection - Render sets PORT environment variable
@@ -191,76 +192,145 @@ def send_message(recipient_id: str, text: str) -> bool:
 # -----------------------------------------------------------------------------
 # Weather Fetch
 # -----------------------------------------------------------------------------
+    
+    
+    
+    
 def get_weather(place: str) -> str:
-    """Fetch weather data for the specified location from OpenWeather (public JSONP endpoint)."""
+    """
+    Fetch weather data for the specified location.
+    Strategy:
+    1) Try OpenWeather 'find' endpoint (JSON) on openweathermap.org (public test key).
+    2) If response isn't JSON, try JSONP extraction via regex.
+    3) If both fail and a real API key is available, fallback to official API (api.openweathermap.org).
+    """
+    place = (place or "").strip()
+    if not place:
+        return "❌ Please provide a city."
+
+    # 1) Try JSON first (no JSONP callback)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/javascript, */*; q=0.1",
         "Referer": f"https://openweathermap.org/find?q={place}",
     }
     params = {
-        "callback": "jQuery",
+        # No 'callback' param here to prefer JSON
         "q": place,
         "type": "like",
         "sort": "population",
         "cnt": "1",
-        "appid": "439d4b804bc8187953eb36d2a8c26a02",  # public test key
+        "appid": "439d4b804bc8187953eb36d2a8c26a02",  # public test key (for website 'find' endpoint)
     }
     try:
-        response = requests.get(
+        resp = requests.get(
             "https://openweathermap.org/data/2.5/find",
             headers=headers,
             params=params,
             verify=False,
             timeout=10,
         )
-        if response.status_code != 200:
-            return "❌ Weather service is currently unavailable."
+    except Exception as e:
+        resp = None
+        print(f"⚠️ Network error calling OW 'find': {e}")
 
-        match = re.search(r'$$(\{.*\})$$', response.text, flags=re.DOTALL)
-        if not match:
-            return "❌ Couldn't fetch weather info."
+    data = None
+    if resp is not None:
+        # Attempt JSON
+        try:
+            data = resp.json()
+        except Exception:
+            # Attempt JSONP parse: look for a single top-level object inside parentheses
+            try:
+                match = re.search(r'$$(\{.*\})$$', resp.text, flags=re.DOTALL)
+                if match:
+                    data = json.loads(match.group(1))
+            except Exception as e:
+                print(f"⚠️ JSONP parse failed: {e}")
 
-        data = json.loads(match.group(1))
-        if not data.get("list") or len(data["list"]) == 0:
-            return f"❌ City '{place}' not found in the Philippines."
-
+    if isinstance(data, dict) and data.get("list"):
         weather_data = data["list"][0]
+        # PH-only guard
         if weather_data.get("sys", {}).get("country") != "PH":
             return f"🌏 '{place}' is not in the Philippines. Only Philippine cities are supported."
+        try:
+            main = weather_data["main"]
+            weather = weather_data["weather"][0]
+            wind = weather_data.get("wind", {})
+            clouds = weather_data.get("clouds", {})
 
-        main = weather_data["main"]
-        weather = weather_data["weather"][0]
-        wind = weather_data.get("wind", {})
-        clouds = weather_data.get("clouds", {})
+            # Kelvin to Celsius
+            temp_c = round(main["temp"] - 273.15, 1)
+            feels_c = round(main["feels_like"] - 273.15, 1)
 
-        temp_c = round(main["temp"] - 273.15, 1)
-        feels_c = round(main["feels_like"] - 273.15, 1)
+            weather_response = (
+                f"📍 {weather_data.get('name', place)}, Philippines\n"
+                f"🌡️ Temperature: {temp_c}°C\n"
+                f"🥶 Feels like: {feels_c}°C\n"
+                f"💧 Humidity: {main.get('humidity', '?')}%\n"
+            )
+            if wind.get("speed") is not None:
+                wind_speed = round(wind["speed"] * 3.6, 1)
+                weather_response += f"🌬️ Wind: {wind_speed} km/h\n"
+            if clouds.get("all") is not None:
+                weather_response += f"☁️ Clouds: {clouds['all']}%\n"
 
-        weather_response = (
-            f"📍 {weather_data['name']}, Philippines\n"
-            f"🌡️ Temperature: {temp_c}°C\n"
-            f"🥶 Feels like: {feels_c}°C\n"
-            f"💧 Humidity: {main['humidity']}%\n"
-        )
+            weather_desc = (weather.get("description") or "").lower()
+            display_desc = "Overcast cloud baka uulan" if ("overcast" in weather_desc and "cloud" in weather_desc) else (weather.get("description") or "").capitalize()
+            weather_response += f"🌈 {display_desc}"
+            return weather_response
+        except Exception as e:
+            print(f"⚠️ Error formatting OW 'find' data: {e}")
 
-        if wind.get("speed") is not None:
-            wind_speed = round(wind["speed"] * 3.6, 1)
-            weather_response += f"🌬️ Wind: {wind_speed} km/h\n"
+    # 3) Fallback: official API if a real key is provided
+    # The public test key is not valid for api.openweathermap.org requests.
+    if OPENWEATHER_API_KEY and OPENWEATHER_API_KEY != "439d4b804bc8187953eb36d2a8c26a02":
+        try:
+            resp2 = requests.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={
+                    "q": f"{place},PH",
+                    "appid": OPENWEATHER_API_KEY,
+                    "units": "metric",
+                },
+                timeout=10,
+            )
+            if resp2.status_code == 200:
+                w = resp2.json()
+                if not w or "main" not in w:
+                    return "❌ Couldn't fetch weather info."
+                main = w["main"]
+                weather = (w.get("weather") or [{}])[0]
+                wind = w.get("wind", {})
+                clouds = w.get("clouds", {})
 
-        if clouds.get("all") is not None:
-            weather_response += f"☁️ Clouds: {clouds['all']}%\n"
+                temp_c = round(main.get("temp", 0.0), 1)
+                feels_c = round(main.get("feels_like", 0.0), 1)
 
-        weather_desc = (weather.get("description") or "").lower()
-        if "overcast" in weather_desc and "cloud" in weather_desc:
-            display_desc = "Overcast cloud baka uulan"
-        else:
-            display_desc = (weather.get("description") or "").capitalize()
+                name = (w.get("name") or place)
+                weather_response = (
+                    f"📍 {name}, Philippines\n"
+                    f"🌡️ Temperature: {temp_c}°C\n"
+                    f"🥶 Feels like: {feels_c}°C\n"
+                    f"💧 Humidity: {main.get('humidity', '?')}%\n"
+                )
+                if wind.get("speed") is not None:
+                    weather_response += f"🌬️ Wind: {round(wind['speed'],1)} m/s\n"
+                if clouds.get("all") is not None:
+                    weather_response += f"☁️ Clouds: {clouds['all']}%\n"
 
-        weather_response += f"🌈 {display_desc}"
-        return weather_response
+                weather_desc = (weather.get("description") or "").lower()
+                display_desc = "Overcast cloud baka uulan" if ("overcast" in weather_desc and "cloud" in weather_desc) else (weather.get("description") or "").capitalize()
+                weather_response += f"🌈 {display_desc}"
+                return weather_response
 
-    except Exception as e:
-        return f"⚠️ Error fetching weather: {str(e)}"
+            else:
+                print(f"⚠️ Official API fallback failed: {resp2.status_code} {resp2.text[:200]}")
+        except Exception as e:
+            print(f"⚠️ Error calling official API fallback: {e}")
+
+    # If we got here, all strategies failed
+    return "❌ Couldn't fetch weather info at the moment. Please try again."
 
 # -----------------------------------------------------------------------------
 # Subscription Management
