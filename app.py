@@ -140,7 +140,7 @@ def send_message(recipient_id: str, text: str) -> bool:
             return False
 
         print(f"📤 Sending: '{text[:120]}...' to {recipient_id}")
-        url = "url = "https://graph.facebook.com/v18.0/715906884939884/messages"
+        url = url = "https://graph.facebook.com/v18.0/715906884939884/messages"
 
         payload = {
             "messaging_type": "RESPONSE",
@@ -462,7 +462,7 @@ def handle_message(sender_id: str, message: str):
 # Startup
 # -----------------------------------------------------------------------------
 def validate_setup() -> bool:
-    if not PAGE_ACCESS_TOKEN or "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW" in PAGE_ACCESS_TOKEN:
+    if not PAGE_ACCESS_TOKEN or "you pages access token" in PAGE_ACCESS_TOKEN:
         print("❌ CRITICAL: You need to set PAGE_ACCESS_TOKEN!")
         return False
     print("✅ Page Access Token set")
