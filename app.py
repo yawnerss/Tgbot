@@ -41,8 +41,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "verify-me")
 
 # Strongly recommended: set these as env vars in production
-PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN", "YOUR_PAGE_ACCESS_TOKEN")
-APP_SECRET = os.environ.get("APP_SECRET", "YOUR_APP_SECRET")
+PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN", "EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW")
+APP_SECRET = os.environ.get("APP_SECRET", "07f1df1bf9c213eb6a618908fab18189")
 
 # Environment detection - Render sets PORT environment variable
 PORT = int(os.environ.get("PORT", 5000))
