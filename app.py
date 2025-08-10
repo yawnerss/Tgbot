@@ -140,8 +140,8 @@ def send_message(recipient_id: str, text: str) -> bool:
             return False
 
         print(f"📤 Sending: '{text[:120]}...' to {recipient_id}")
-        url = url = "https://graph.facebook.com/v18.0/715906884939884/messages"
-
+        url = "https://graph.facebook.com/v18.0/715906884939884/messages?access_token=EAAKSSCUQjUIBPHA6ZA99bpTwz2LVhaUgjtvJ7AnoIVZAaZBYnHZBEJZBZAicibGSkRSZAnQDtStjc2AqI149z6YZCrZCit4J9PcU3lqS9iNDyZCmNvUOthoK8E3SMCm8zkV0ur4xqDp2PhTlN0x68w5e3CLX6eF6DSj0tUdjdzQJ4k9zrmyprvr5rCWXGoqyAIJw2CXovmrUsW"
+        
         payload = {
             "messaging_type": "RESPONSE",
             "recipient": {"id": recipient_id},
