@@ -34,9 +34,10 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-@app.before_first_request
-def _start_bg():
-  # Ensure the scheduler runs in WSGI environments where __main__ isn't executed
+# Add a replacement hook that exists in Flask 3.x:
+@app.before_request
+def _ensure_scheduler_on_first_request():
+  # This is called for every request; the guard ensures it only starts once per process
   ensure_scheduler_started()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -263,7 +264,7 @@ def get_weather(place: str) -> str:
       except Exception:
           # Attempt JSONP parse: look for a single top-level object inside parentheses
           try:
-              match = re.search(r'$$(\{.*\})$$', resp.text, flags=re.DOTALL)
+              match = re.search(r'$$(\{.*?\})$$', resp.text, flags=re.DOTALL)
               if match:
                   data = json.loads(match.group(1))
           except Exception as e:
