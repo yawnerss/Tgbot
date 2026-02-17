@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: fb-weather-bot
-    env: python
-    buildCommand: ""
-    startCommand: python app.py
-    plan: free
